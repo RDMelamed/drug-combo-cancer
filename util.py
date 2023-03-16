@@ -17,12 +17,6 @@ def get_sparseindex(comboname):
     sparse_index = np.delete(sparse_index,0)
     return sparse_index
 
-def get_trt_names(hisdir, drugid):
-    runname = hisdir + 'Target.' + str(drugid) +"/"
-    if not os.path.exists(runname):
-        os.mkdir(runname)
-    return runname, runname + 'trt'
-
 
 def sparse_index_name(combodir):
     return combodir + "sparse_index.pkl"

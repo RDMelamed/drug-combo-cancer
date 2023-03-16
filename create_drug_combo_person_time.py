@@ -30,7 +30,7 @@ def one_basedrug(drugid, hisdir,resdir, outcomes,
     if not hisdir.endswith("/"): hisdir += "/"
     if not resdir.endswith("/"): resdir += "/"
 
-    
+    ### Block 1
     comboname = util.combo_names2(resdir, drugid)
 
     ## get patients who took drug A
@@ -42,7 +42,9 @@ def one_basedrug(drugid, hisdir,resdir, outcomes,
         except OSError: ## this was not done
             return
     trtid = np.loadtxt(trtid_file,dtype=int)
+    ### end Block 1
 
+    ### Block 2
     BIGNESS = 300000/max(1,3-agg, (drug1_washout - 20) % (agg*12))
     if drug1_washout == np.inf:
         BIGNESS = 100000
@@ -74,8 +76,9 @@ def one_basedrug(drugid, hisdir,resdir, outcomes,
         idfiles = [comboname + 'trtid']
     print("splits ",",".join(idfiles))        
     del trtid
+    ### end Block 2
 
-
+    ### Block 3
     ## matching codes to their meanings
     voc = pd.read_pickle("../../data/clid.vi.allvocab.pkl")
     
@@ -89,8 +92,9 @@ def one_basedrug(drugid, hisdir,resdir, outcomes,
     ctl_outcomes_name = ctl_outcomes_name.split(".")[0]
     ctlo = sorted(ctl_outcomes.keys())
     outcomes_list =  [ctl_outcomes[i] for i in ctlo]
-
-
+    ### end Block 3
+    
+    ### Block 4
     ### get all of the possible health codes as features
     sparse_ix_name = util.sparse_index_name(comboname)
     if not os.path.exists(sparse_ix_name):
@@ -104,11 +108,11 @@ def one_basedrug(drugid, hisdir,resdir, outcomes,
     ### all these people have no history of cancer but may have histoy of the CTL outcomes
     ### thus we need to make sure we are recording their past CTL outcomes
     past_inp = np.array(sorted(set(outcome_vi_keep) | set(past_sparse_index)))
-
+    ### end Block 4
 
     ### for each of our cohorts (or all patients who took the drug, if not giant)
     for runi,fname in enumerate(idfiles):
-        #pdb.set_trace()    
+        ### Block 5
         runi  = str(runi) +  "."
         run_save = comboname + runi  + suff2 + "."
         nopastuct = pd.DataFrame()
@@ -125,10 +129,10 @@ def one_basedrug(drugid, hisdir,resdir, outcomes,
 
         past.data = np.clip(past.data,0,1) #past = past > 0
         todo = set(fut_sparse_ix) & rx_vi ## this is for obtaining the drug2's
+        #### end Block 5
 
 
-
-
+        ### Block 6
         if not os.path.exists(d2counts):
             sel = np.where(np.isin(fut_sparse_ix, list(rx_vi)))[0]
             rxvin = fut_sparse_ix[sel]
@@ -150,10 +154,12 @@ def one_basedrug(drugid, hisdir,resdir, outcomes,
             nopastuct.to_csv(d2counts,sep="\t")
         #pdb.set_trace()
         todo = list(nopastuct.loc[nopastuct['ct'] > drug_freq_filter].index)
-
+        ### end Block 6
         
         if len(todo) == 0:
             continue
+
+        ### Block 7
         ### we included some elements in history just to get if person has history
         ### of disease... might include sparse not good things, remove for regression
         ### just keep if person (row) has history of outcome
@@ -161,15 +167,17 @@ def one_basedrug(drugid, hisdir,resdir, outcomes,
                         for ovi in outcomes_list]).transpose()
 
         past = past[:,np.where(np.isin(past_inp, past_sparse_index))[0]]
+        ### end block 7
 
-        ## this is some insane fanciness where I get the future-incidences which corresp to
-        ## my particular outcomes (outcomes_list = list of the Vocab Ids VI)
+        ### Block 8
+        ## we also included outcomes in the follow-up features, though they might not be common enough to use for
+        ##   regression-- we want to keep the info about when the outcomes happen, but remove it from the features for regression
+        ## we get the future-incidences which correspond to our particular outcomes (outcomes_list = list of the Vocab Ids VI)
         x  = pd.DataFrame(np.transpose(np.array([np.array(fut[:,np.where(np.isin(fut_sparse_ix,ovi))[0]].sum(axis=1)>0)[:,0]
                             for ovi in outcomes_list])),
                           columns = ctlo,dtype=int)
         x = pd.concat((cens_info['ids'],x),axis=1)
         y = x.groupby('ids').agg(np.cumsum)
-        #y = pd.concat((x['ids'],y.mask(y > 1, other=1)),axis=1)
         y = pd.concat((x['ids'],y),axis=1)
         z = y.groupby('ids').agg(np.cumsum)
         fut_inc = z.mask(z > 1, other = -1)
@@ -179,7 +187,9 @@ def one_basedrug(drugid, hisdir,resdir, outcomes,
         fut = fut[:,np.isin(fut_sparse_ix, fut_ix_fit)]
         fut_sparse_ix = fut_ix_fit
         lab = np.array(lab)
-        
+        ### end Block 8
+
+        ### begin Block 9
         discont_file = run_save + "bz2"
         #pdb.set_trace()
 
@@ -204,13 +214,16 @@ def one_basedrug(drugid, hisdir,resdir, outcomes,
             cens_info.to_csv(discont_file,sep="\t",header=True,compression='bz2')
         else:
             cens_info = pd.read_csv(discont_file,index_col=0,sep="\t")
+        ### end block 9
+
+        ### block 10
         ## remove censored (discontinued)time points
         uncensored = np.where(lab==0)[0]
         cens_info = cens_info.iloc[uncensored,:]
         ch_len = ch_len[uncensored]
         dense =  dense[uncensored,:];  past=past[uncensored,:]; fut = fut[uncensored,:]
         fut_inc = fut_inc.iloc[uncensored,:] #history_of =  history_of[uncensored,:];
-
+        ### end block 10
             
         #pdb.set_trace()        
         
@@ -218,6 +231,8 @@ def one_basedrug(drugid, hisdir,resdir, outcomes,
         for drug2 in todo:
             if sel_todo and not drug2 in sel_todo:
                 continue
+
+            ### Block 11
             drug2f = run_save + str(drug2) + "." 
             if drug2f in complete:
                 print("...have:", run_save + str(drug2))
@@ -257,19 +272,20 @@ def one_basedrug(drugid, hisdir,resdir, outcomes,
             comb_init = []
 
             comb_init = combhis.iloc[sel,:].copy()
+            ### end Block 11
+
+            ### Block 12
             fut_columns =  fut_sparse_ix!=drug2
             print("Weights for "+ drug2f  + " {:d}x{:d}".format(comb_init.shape[0],fut.shape[1] +past.shape[1]))
-            #fut[sel,:][:,np.where(fut_columns)[0]],
             fut_do = fut[sel,:][:,np.where(fut_columns)[0]]
             wt.p2weight(comb_init, comb_init['drug2'].values, dense[sel,:], past[sel,:],
                         fut_do,
                         ch_len[sel]/(TIME_CHUNK*agg),
                          drug2f, past_sparse_index, fut_sparse_ix[fut_columns],p="drug2")
             comb_init = comb_init.drop(['drug2.den','drug2.num'],axis=1)
-            #comb_init.to_csv(init_weights,sep="\t",header=True,compression='bz2')
-            ## end "if not os.path.exists(init_weights):
-            #pdb.set_trace()
+            ### end Block 12
 
+            ### Block 13
             ### fixing the fact that there will be rows that were dropped for
             ### fitting the model.
             init_weight = np.ones(combhis.shape[0])
@@ -281,12 +297,15 @@ def one_basedrug(drugid, hisdir,resdir, outcomes,
             combhis['drug2.cum_wt'] = combhis.groupby('ids')['init_weight'].agg('cumprod')
             del comb_init
             combhis = combhis.loc[pastdrug==0,:]
-            
+            ### end Block 13
+
+            ### Block 14
+            ### expanding into trials of person-time
             trials = []
             dsel = []
             treated = []
+            ## for each person, obtain their trials, up through the initiation of drug B each time is a trial
             for pat in set(combhis['ids']):
-                ##  combhis.groupby("ids").apply(..?)
                 patrows = np.where(combhis['ids']==pat)[0]
                 patdat = combhis.iloc[patrows,:]
                 for trial in range(patdat.shape[0]):
@@ -299,7 +318,11 @@ def one_basedrug(drugid, hisdir,resdir, outcomes,
                     if trial_treated:
                         break
             print("Expanding "+ drug2f +" to ",len(dsel))
-            fut_inc.loc[pastdrug==0,:].iloc[dsel,:].to_csv(drug2f + ctl_outcomes_name + ".bz2", sep="\t",header=True,compression="bz2", index=False)
+
+            ### end Block 14
+
+            ### Block 15
+            fut_inc.loc[pastdrug==0,:].iloc[dsel,:].to_csv(drug2f + ctl_outcomes_name + ".bz2", sep="\t",header=True,compression="bz2", index=False)            
             trial_file = drug2f + "trials.bz2"
             if not os.path.exists(trial_file):
                 #pdb.set_trace()
@@ -313,7 +336,7 @@ def one_basedrug(drugid, hisdir,resdir, outcomes,
 
                 to_drop = set(['drug2','discont.cum_wt','drug2.cum_wt','init_weight']) & set(combhis.columns)
                 combhis.drop(to_drop,axis=1).to_csv(trial_file,sep="\t",header=True,compression="bz2",index=False)
-
+            ### end Block 15
             print("Finished:",drug2f)
             with open(complete_log,'a') as f:
                 #f.write(runi + str(drug2) + "\n")
